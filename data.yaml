@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 8
+names: ['Distracted', 'Drinking', 'Drowsy', 'Eating', 'PhoneUse', 'SafeDriving', 'Seatbelt', 'Smoking']
+
+roboflow:
+  workspace: driver-monitoring-system-woxvc
+  project: driver-monitoring-system-v0mei
+  version: 11
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/driver-monitoring-system-woxvc/driver-monitoring-system-v0mei/dataset/11

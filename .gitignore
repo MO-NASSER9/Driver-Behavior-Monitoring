@@ -1,0 +1,18 @@
+venv/
+.venv/
+env/
+__pycache__/
+.idea/
+.vscode/
+test/
+train/
+valid/
+image train/
+*.pt
+*.weights
+*.onnx
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
