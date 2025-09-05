@@ -16,3 +16,4 @@ image train/
 *.bak
 .DS_Store
 Thumbs.db
+train_data.ipynb
