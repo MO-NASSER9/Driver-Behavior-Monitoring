@@ -1,90 +1,126 @@
 import cv2
 import numpy as np
 import time
+import json
+import os
 
 class EyeGaze:
-    def __init__(self, distraction_threshold_seconds=1.5, calibration_time=5, sensitivity=0.07):
-        self.distraction_threshold = distraction_threshold_seconds
-        self.alert_cooldown = 1
-        self.calibration_frames = int(calibration_time * 30)
-        self.sensitivity = sensitivity
-        self.is_calibrated = False
-        self.is_distracted = False
-        self.distraction_start_time = 0
-        self.last_alert_time = 0
-        self.calibration_data = []
+    # ==============================================================================
+    # Section 1: Initialization and Settings
+    # ==============================================================================
+    def __init__(self, distraction_threshold_seconds=1.0, calibration_time=3, sensitivity=0.07, calibration_file="gaze_calibration.json"):
+        self.distraction_threshold = distraction_threshold_seconds 
+        self.alert_cooldown = 2.0 
+        self.calibration_frames = int(calibration_time * 30)  
+        self.sensitivity = sensitivity  
+        self.is_calibrated = False 
+        self.distraction_start_time = 0  
+        self.last_alert_time = 0  
+        self.calibration_data = [] 
         self.baseline_gaze_ratio = 0.0
+        self.calibration_file = calibration_file
 
-    def _calculate_gaze_ratio(self, eye_points, facial_landmarks):
+        # --- Landmark Indices ---
+        self.left_eye_indices = [33, 133, 473]  # [Right Corner, Left Corner, Iris]
+        self.right_eye_indices = [263, 362, 468] # [Right Corner, Left Corner, Iris]
+
+        # --- Load calibration if available ---
+        self._load_calibration()
+
+    # ==============================================================================
+    # Section 2: Calibration Handling
+    # ==============================================================================
+    def _load_calibration(self):
+        if os.path.exists(self.calibration_file):
+            with open(self.calibration_file, "r") as f:
+                data = json.load(f)
+                self.baseline_gaze_ratio = data.get("baseline_gaze_ratio", 0.0)
+                self.is_calibrated = True
+                print(f"[INFO] Loaded calibration: Baseline = {self.baseline_gaze_ratio:.3f}")
+
+    def _save_calibration(self):
+        with open(self.calibration_file, "w") as f:
+            json.dump({"baseline_gaze_ratio": self.baseline_gaze_ratio}, f)
+        print(f"[INFO] Calibration saved to {self.calibration_file}")
+
+    # ==============================================================================
+    # Section 3: Helper Calculation Function
+    # ==============================================================================
+    def _calculate_gaze_ratio(self, landmarks, eye_indices):
         try:
-            eye_center_x = (facial_landmarks[eye_points[0]][0] + facial_landmarks[eye_points[3]][0]) / 2
-            eye_center_y = (facial_landmarks[eye_points[1]][1] + facial_landmarks[eye_points[4]][1]) / 2
-            iris_pos_x = facial_landmarks[eye_points[6]][0]
-            eye_width = np.linalg.norm(facial_landmarks[eye_points[0]] - facial_landmarks[eye_points[3]])
-            
+            eye_right_pt = landmarks[eye_indices[0]]
+            eye_left_pt = landmarks[eye_indices[1]]
+            iris_pt = landmarks[eye_indices[2]]
+
+            eye_center_x = (eye_right_pt[0] + eye_left_pt[0]) / 2
+            eye_width = np.linalg.norm(eye_right_pt - eye_left_pt)
+
             if eye_width == 0:
                 return None
-            
-            ratio = (iris_pos_x - eye_center_x) / eye_width
-            return ratio
+
+            return (iris_pt[0] - eye_center_x) / eye_width
         except IndexError:
             return None
 
+    # ==============================================================================
+    # Section 4: Main Processing Function
+    # ==============================================================================
     def process_frame(self, frame, face_mesh_results):
         gaze_alert = None
         left_iris_coords = None
         right_iris_coords = None
-        
-        if not face_mesh_results or not face_mesh_results.multi_face_landmarks:
+
+        if not (face_mesh_results and face_mesh_results.multi_face_landmarks):
             return None, None, None
 
+        # --- تحويل نقاط الوجه إلى مصفوفة بكسلات ---
         face_landmarks = face_mesh_results.multi_face_landmarks[0]
         h, w, _ = frame.shape
         landmarks = np.array([(lm.x * w, lm.y * h) for lm in face_landmarks.landmark])
 
-        left_eye_points = [33, 159, 160, 133, 145, 153, 473]
-        right_eye_points = [263, 386, 387, 362, 374, 380, 468]
-
-        left_gaze_ratio = self._calculate_gaze_ratio(left_eye_points, landmarks)
-        right_gaze_ratio = self._calculate_gaze_ratio(right_eye_points, landmarks)
-
         try:
-            left_iris_coords = tuple(landmarks[left_eye_points[6]].astype(int))
-            right_iris_coords = tuple(landmarks[right_eye_points[6]].astype(int))
+            left_iris_coords = tuple(landmarks[self.left_eye_indices[2]].astype(int))
+            right_iris_coords = tuple(landmarks[self.right_eye_indices[2]].astype(int))
         except IndexError:
             pass
+
+        # --- 4.1: Calibration Phase ---
+        if not self.is_calibrated:
+            cv2.putText(frame, "Calibrating Gaze... Look Forward", (50, 100),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            left_ratio = self._calculate_gaze_ratio(landmarks, self.left_eye_indices)
+            right_ratio = self._calculate_gaze_ratio(landmarks, self.right_eye_indices)
+
+            if left_ratio is not None and right_ratio is not None:
+                avg_ratio = (left_ratio + right_ratio) / 2.0
+                self.calibration_data.append(avg_ratio)
+
+            if len(self.calibration_data) >= self.calibration_frames:
+                self.baseline_gaze_ratio = np.mean(self.calibration_data)
+                self.is_calibrated = True
+                self._save_calibration()
+                print(f"[INFO] Gaze calibration complete. Baseline: {self.baseline_gaze_ratio:.3f}")
+
+            return None, left_iris_coords, right_iris_coords
+
+        # --- 4.2: Detection Phase (Post-Calibration) ---
+        current_time = time.time()
+        left_gaze_ratio = self._calculate_gaze_ratio(landmarks, self.left_eye_indices)
+        right_gaze_ratio = self._calculate_gaze_ratio(landmarks, self.right_eye_indices)
 
         if left_gaze_ratio is None or right_gaze_ratio is None:
             return None, left_iris_coords, right_iris_coords
 
         avg_gaze_ratio = (left_gaze_ratio + right_gaze_ratio) / 2.0
 
-        if not self.is_calibrated:
-            if len(self.calibration_data) < self.calibration_frames:
-                self.calibration_data.append(avg_gaze_ratio)
-            else:
-                self.baseline_gaze_ratio = np.mean(self.calibration_data)
-                self.is_calibrated = True
-                print(f"Gaze calibration complete. Baseline ratio: {self.baseline_gaze_ratio:.3f}")
-            
-            cv2.putText(frame, "Calibrating... Look Forward", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-            return None, left_iris_coords, right_iris_coords
-
-        current_time = time.time()
-        
         if abs(avg_gaze_ratio - self.baseline_gaze_ratio) > self.sensitivity:
-            if not self.is_distracted:
-                self.is_distracted = True
+            if self.distraction_start_time == 0:
                 self.distraction_start_time = current_time
+            elif (current_time - self.distraction_start_time) > self.distraction_threshold:
+                if (current_time - self.last_alert_time) > self.alert_cooldown:
+                    gaze_alert = "GAZE DISTRACTION!"
+                    self.last_alert_time = current_time
         else:
-            self.is_distracted = False
             self.distraction_start_time = 0
-
-        if self.is_distracted:
-            distraction_duration = current_time - self.distraction_start_time
-            if distraction_duration > self.distraction_threshold and (current_time - self.last_alert_time > self.alert_cooldown):
-                gaze_alert = "PLEASE FOCUS!"
-                self.last_alert_time = current_time
-                self.is_distracted = False
 
         return gaze_alert, left_iris_coords, right_iris_coords
