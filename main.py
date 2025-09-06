@@ -1,4 +1,14 @@
 # ==============================================================================
+# Project: Driver Behavior Monitoring System
+# Author: Mohamed Nasser Abdelhady
+# Version: 1.0.0
+# Date: 2025-09-06
+# Description: Real-time driver monitoring using YOLO, Mediapipe, and Gaze Tracking.
+# ==============================================================================
+
+VERSION = "1.0.0"
+
+# ==============================================================================
 # Section 1: Core Library Imports
 # ==============================================================================
 import cv2
@@ -64,7 +74,7 @@ if __name__ == "__main__":
     
     eye_gaze_tracker = eye_gaze.EyeGaze(calibration_time=3)
     active_alerts = {}
-
+    print(f"Starting Driver Monitor System - Version {VERSION}")
     print("\nStarting Driver Monitor...")
 
     # --- 4.2: Main Video Processing Loop ---

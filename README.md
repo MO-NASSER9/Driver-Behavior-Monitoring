@@ -4,6 +4,7 @@
     <img src="https://img.shields.io/badge/Python-3.9%2B-blue.svg" alt="Python Version">
     <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
     <img src="https://img.shields.io/badge/Frameworks-OpenCV%20%7C%20MediaPipe%20%7C%20YOLOv8-orange" alt="Frameworks">
+    <img src="https://img.shields.io/badge/Version-1.0.0-blue.svg" alt="Version">
 </p>
 
 ## 1. Overview
@@ -44,3 +45,6 @@ This project is a real-time driver behavior monitoring system developed in Pytho
 
 ```bash
 python main.py
+```
+
+**Current Version:** `1.0.0`
